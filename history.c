@@ -1,115 +1,143 @@
 #include "shell.h"
 
 /**
- * print_history - displays the history list, one command by line, preceded
- *              with line numbers, starting at 0.
- * @info: Structure containing potential arguments. Used to maintain
- *        constant function prototype.
- *  Return: Always 0
- */
-int print_history(info_t *info)
-{
-    print_list(info->history);
-    return (0);
-}
-
-/**
- * remove_alias - removes alias from list
+ * get_history_file - gets the history file
  * @info: parameter struct
- * @alias: the string alias
  *
- * Return: Always 0 on success, 1 on error
+ * Return: allocated string containg history file
  */
-int remove_alias(info_t *info, char *alias)
-{
-    char *p, c;
-    int ret;
 
-    p = _strchr(alias, '=');
-    if (!p)
-        return (1);
-    c = *p;
-    *p = 0;
-    ret = delete_node_at_index(&(info->alias),
-        get_node_index(info->alias, node_starts_with(info->alias, alias, -1)));
-    *p = c;
-    return (ret);
+char *get_history_file(info_t *info)
+{
+	char *buf, *dir;
+
+	dir = _getenv(info, "HOME=");
+	if (!dir)
+		return (NULL);
+	buf = malloc(sizeof(char) * (_strlen(dir) + _strlen(HIST_FILE) + 2));
+	if (!buf)
+		return (NULL);
+	buf[0] = 0;
+	_strcpy(buf, dir);
+	_strcat(buf, "/");
+	_strcat(buf, HIST_FILE);
+	return (buf);
 }
 
 /**
- * set_alias - sets alias to string
- * @info: parameter struct
- * @alias: the string alias
+ * write_history - creates a file, or appends to an existing file
+ * @info: the parameter struct
  *
- * Return: Always 0 on success, 1 on error
+ * Return: 1 on success, else -1
  */
-int set_alias(info_t *info, char *alias)
+int write_history(info_t *info)
 {
-    char *p;
+	ssize_t fd;
+	char *filename = get_history_file(info);
+	list_t *node = NULL;
 
-    p = _strchr(alias, '=');
-    if (!p)
-        return (1);
-    if (!*++p)
-        return (remove_alias(info, alias));
+	if (!filename)
+		return (-1);
 
-    remove_alias(info, alias);
-    return (add_node_end(&(info->alias), alias, 0) == NULL);
+	fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
+	free(filename);
+	if (fd == -1)
+		return (-1);
+	for (node = info->history; node; node = node->next)
+	{
+		_putsfd(node->str, fd);
+		_putfd('\n', fd);
+	}
+	_putfd(BUF_FLUSH, fd);
+	close(fd);
+	return (1);
 }
 
 /**
- * print_alias - prints an alias string
- * @node: the alias node
+ * read_history - reads history from file
+ * @info: the parameter struct
  *
- * Return: Always 0 on success, 1 on error
+ * Return: histcount on success, 0 otherwise
  */
-int print_alias(list_t *node)
+int read_history(info_t *info)
 {
-    char *p = NULL, *a = NULL;
+	int i, last = 0, linecount = 0;
+	ssize_t fd, rdlen, fsize = 0;
+	struct stat st;
+	char *buf = NULL, *filename = get_history_file(info);
 
-    if (node)
-    {
-        p = _strchr(node->str, '=');
-        for (a = node->str; a <= p; a++)
-            _putchar(*a);
-        _putchar('\'');
-        _puts(p + 1);
-        _puts("'\n");
-        return (0);
-    }
-    return (1);
+	if (!filename)
+		return (0);
+
+	fd = open(filename, O_RDONLY);
+	free(filename);
+	if (fd == -1)
+		return (0);
+	if (!fstat(fd, &st))
+		fsize = st.st_size;
+	if (fsize < 2)
+		return (0);
+	buf = malloc(sizeof(char) * (fsize + 1));
+	if (!buf)
+		return (0);
+	rdlen = read(fd, buf, fsize);
+	buf[fsize] = 0;
+	if (rdlen <= 0)
+		return (free(buf), 0);
+	close(fd);
+	for (i = 0; i < fsize; i++)
+		if (buf[i] == '\n')
+		{
+			buf[i] = 0;
+			build_history_list(info, buf + last, linecount++);
+			last = i + 1;
+		}
+	if (last != i)
+		build_history_list(info, buf + last, linecount++);
+	free(buf);
+	info->histcount = linecount;
+	while (info->histcount-- >= HIST_MAX)
+		delete_node_at_index(&(info->history), 0);
+	renumber_history(info);
+	return (info->histcount);
 }
 
 /**
- * handle_alias - mimics the alias builtin (man alias)
+ * build_history_list - adds entry to a history linked list
  * @info: Structure containing potential arguments. Used to maintain
- *          constant function prototype.
- *  Return: Always 0
+ * @buf: buffer
+ * @linecount: the history linecount, histcount
+ *
+ * Return: Always 0
  */
-int handle_alias(info_t *info)
+int build_history_list(info_t *info, char *buf, int linecount)
 {
-    int i = 0;
-    char *p = NULL;
-    list_t *node = NULL;
+	list_t *node = NULL;
 
-    if (info->argc == 1)
-    {
-        node = info->alias;
-        while (node)
-        {
-            print_alias(node);
-            node = node->next;
-        }
-        return (0);
-    }
-    for (i = 1; info->argv[i]; i++)
-    {
-        p = _strchr(info->argv[i], '=');
-        if (p)
-            set_alias(info, info->argv[i]);
-        else
-            print_alias(node_starts_with(info->alias, info->argv[i], '='));
-    }
+	if (info->history)
+		node = info->history;
+	add_node_end(&node, buf, linecount);
 
-    return (0);
+	if (!info->history)
+		info->history = node;
+	return (0);
+}
+
+/**
+ * renumber_history - renumbers the history linked list after changes
+ * @info: Structure containing potential arguments. Used to maintain
+ *
+ * Return: the new histcount
+ */
+int renumber_history(info_t *info)
+{
+	list_t *node = info->history;
+	int i = 0;
+
+	while (node)
+	{
+		node->num = i++;
+		node = node->next;
+	}
+	return (info->histcount = i);
 }
