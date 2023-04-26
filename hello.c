@@ -1,60 +1,74 @@
-#include <stdio.h>
+#include "shell.h"
 
 /**
- * is_interactive - returns true if running in interactive mode
- * @fd: the file descriptor for stdin
+ * interactive - returns true if shell is interactive mode
+ * @info: struct address
  *
- * Return: 1 if in interactive mode, 0 otherwise
+ * Return: 1 if interactive mode, 0 otherwise
  */
-int is_interactive(int fd)
+int is_interactive(info_t *info)
 {
-    return (isatty(fd));
+	return (isatty(STDIN_FILENO) && info->readfd <= 2);
 }
 
 /**
- * is_delimiter - checks if a character is a delimiter
- * @c: the character to check
- *
- * Return: 1 if the character is a delimiter, 0 otherwise
+ * is_delim - checks if character is a delimeter
+ * @c: the char to check
+ * @delim: the delimeter string
+ * Return: 1 if true, 0 if false
  */
-int is_delimiter(char c)
+int  is_delimiter(char c, char *delim)
 {
-    char *delimiters = " \t\n";
-    while (*delimiters != '\0') {
-        if (*delimiters == c) {
-            return 1;
-        }
-        delimiters++;
-    }
-    return 0;
+	while (*delim)
+		if (*delim++ == c)
+			return (1);
+	return (0);
 }
 
 /**
- * str_to_int - converts a string to an integer
- * @str: the string to convert
- *
- * Return: the converted integer, or 0 if the string does not contain a number
+ *_isalpha - checks for alphabetic character
+ *@c: The character to input
+ *Return: 1 if c is alphabetic, 0 otherwise
  */
-int str_to_int(const char *str)
+
+int str_to_int(int c)
 {
-    int sign = 1, result = 0, i = 0;
-    if (str[0] == '-') {
-        sign = -1;
-        i++;
-    }
-    for (; str[i] != '\0'; i++) {
-        if (str[i] < '0' || str[i] > '9') {
-            return 0;
-        }
-        result = result * 10 + (str[i] - '0');
-    }
-    return sign * result;
+	if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+		return (1);
+	else
+		return (0);
 }
 
-int main(void)
+/**
+ *_atoi - converts a string to an integer
+ *@s: the string to be converted
+ *Return: 0 if no numbers in string, converted number otherwise
+ */
+
+int _ayo(char *s)
 {
-    printf("Is interactive: %d\n", is_interactive(STDIN_FILENO));
-    printf("Is delimiter: %d\n", is_delimiter(' '));
-    printf("String to integer: %d\n", str_to_int("-12345"));
-    return 0;
+	int i, sign = 1, flag = 0, output;
+	unsigned int result = 0;
+
+	for (i = 0;  s[i] != '\0' && flag != 2; i++)
+	{
+		if (s[i] == '-')
+			sign *= -1;
+
+		if (s[i] >= '0' && s[i] <= '9')
+		{
+			flag = 1;
+			result *= 10;
+			result += (s[i] - '0');
+		}
+		else if (flag == 1)
+			flag = 2;
+	}
+
+	if (sign == -1)
+		output = -result;
+	else
+		output = result;
+
+	return (output);
 }
